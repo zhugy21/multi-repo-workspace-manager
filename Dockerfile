@@ -4,17 +4,15 @@ FROM golang:1.24-alpine AS builder
 ARG http_proxy
 ARG https_proxy
 ENV http_proxy=$http_proxy \
-    https_proxy=$https_proxy \
-    GOPROXY=https://proxy.golang.org,direct
+    https_proxy=$https_proxy
 
+# git + ca-certificates only needed if building outside vendor mode
+# remaining as fallback; vendor build needs no network
 RUN apk add --no-cache git ca-certificates
 
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /usr/local/bin/ws ./cmd/ws/
+RUN CGO_ENABLED=0 go build -mod=vendor -ldflags="-s -w" -o /usr/local/bin/ws ./cmd/ws/
 
 # ── Stage 2: Runtime ──────────────────────────────────────────
 FROM alpine:3.21
