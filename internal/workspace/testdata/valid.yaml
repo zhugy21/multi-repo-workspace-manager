@@ -1,0 +1,21 @@
+workspace_name: fixtures
+config:
+  default_concurrency: 4
+  default_timeout: 120s
+  fail_fast: false
+  output_format: tui
+groups:
+  backend:
+    - svc-a
+    - svc-b
+repos:
+  - name: svc-a
+    path: ./svc-a
+    type: go
+    group: backend
+    build_command: "go build ./..."
+  - name: svc-b
+    path: ./svc-b
+    type: go
+    group: backend
+    build_command: "go build ./..."

@@ -1,0 +1,8 @@
+config: {}
+groups:
+  backend:
+    - svc-a
+repos:
+  - name: svc-x
+    path: ./svc-x
+    group: nonexistent
