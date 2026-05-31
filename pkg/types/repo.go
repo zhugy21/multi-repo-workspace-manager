@@ -24,9 +24,9 @@ type Repo struct {
 	Group             string        `yaml:"group,omitempty" json:"group,omitempty"`
 	DefaultBranch     string        `yaml:"default_branch,omitempty" json:"default_branch,omitempty"`
 	BuildCommand      string        `yaml:"build_command,omitempty" json:"build_command,omitempty"`
-	BuildTimeout      time.Duration `yaml:"build_timeout,omitempty" json:"build_timeout,omitempty"`
+	BuildTimeout      time.Duration `yaml:"build_timeout,omitempty" json:"build_timeout_ns,omitempty"`
 	HealthCommand     string        `yaml:"health_command,omitempty" json:"health_command,omitempty"`
-	HealthTimeout     time.Duration `yaml:"health_timeout,omitempty" json:"health_timeout,omitempty"`
+	HealthTimeout     time.Duration `yaml:"health_timeout,omitempty" json:"health_timeout_ns,omitempty"`
 	EnvFile           string        `yaml:"env_file,omitempty" json:"env_file,omitempty"`
 	DockerComposeFile string        `yaml:"docker_compose_file,omitempty" json:"docker_compose_file,omitempty"`
 	SyncCommand       string        `yaml:"sync_command,omitempty" json:"sync_command,omitempty"`
@@ -35,12 +35,12 @@ type Repo struct {
 
 // Task is the input to the executor engine.
 type Task struct {
-	ID       string
-	RepoName string
-	Group    string
-	Command  []string
-	Timeout  time.Duration // 0 means use global default
-	EnvFiles []string
+	ID       string        `json:"id"`
+	RepoName string        `json:"repo_name"`
+	Group    string        `json:"group,omitempty"`
+	Command  []string      `json:"command"`
+	Timeout  time.Duration `json:"timeout_ns"` // 0 means use global default
+	EnvFiles []string      `json:"env_files,omitempty"`
 }
 
 // Result is the output from executing a single task.
@@ -49,10 +49,10 @@ type Result struct {
 	RepoName string        `json:"repo_name"`
 	Group    string        `json:"group,omitempty"`
 	Status   Status        `json:"status"`
-	Detail   string        `json:"detail"`
+	Detail   string        `json:"detail,omitempty"`
 	Error    error         `json:"-"`
 	ErrorStr string        `json:"error,omitempty"`
-	Duration time.Duration `json:"duration_ms"`
+	Duration time.Duration `json:"duration_ns"`
 	ExitCode int           `json:"exit_code"`
 }
 
@@ -68,9 +68,9 @@ type Summary struct {
 
 // Filter selects which repos to operate on.
 type Filter struct {
-	All   bool
-	Group string
-	Repo  string
+	All   bool   `json:"all"`
+	Group string `json:"group,omitempty"`
+	Repo  string `json:"repo,omitempty"`
 }
 
 // HasFailures returns true if any task failed.
@@ -79,6 +79,7 @@ func (s Summary) HasFailures() bool {
 }
 
 // Summarize counts results by status and returns a Summary.
+// pending and running statuses are counted in Total but not in any category.
 func Summarize(results []Result) Summary {
 	s := Summary{}
 	for _, r := range results {
@@ -94,6 +95,8 @@ func Summarize(results []Result) Summary {
 			s.Skipped++
 		case StatusWarning:
 			s.Warning++
+		default:
+			// pending, running, or unknown — counted in Total only
 		}
 	}
 	return s

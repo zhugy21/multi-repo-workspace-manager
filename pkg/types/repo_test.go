@@ -45,8 +45,8 @@ func TestRepoJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, "backend", r2.Group)
 	assert.Equal(t, "main", r2.DefaultBranch)
 	assert.Equal(t, "make build", r2.BuildCommand)
-	assert.Greater(t, r2.BuildTimeout, time.Duration(0))
-	assert.Greater(t, r2.HealthTimeout, time.Duration(0))
+	assert.Equal(t, r.BuildTimeout, r2.BuildTimeout)
+	assert.Equal(t, r.HealthTimeout, r2.HealthTimeout)
 }
 
 func TestResultJSONOmitEmpty(t *testing.T) {
@@ -86,7 +86,16 @@ func TestSummarizeNoFailures(t *testing.T) {
 		{RepoName: "b", Status: StatusWarning},
 	}
 	s := Summarize(results)
+	assert.Equal(t, 2, s.Total)
+	assert.Equal(t, 1, s.Success)
+	assert.Equal(t, 1, s.Warning)
 	assert.False(t, s.HasFailures())
+}
+
+func TestSummarizeNilInput(t *testing.T) {
+	s := Summarize(nil)
+	assert.Equal(t, 0, s.Total)
+	assert.Equal(t, Summary{}, s)
 }
 
 func TestFilterDefaults(t *testing.T) {
