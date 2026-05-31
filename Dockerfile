@@ -5,8 +5,7 @@ ARG http_proxy
 ARG https_proxy
 ENV http_proxy=$http_proxy \
     https_proxy=$https_proxy \
-    GOPROXY=direct \
-    GONOSUMDB="*"
+    GOPROXY=https://proxy.golang.org,direct
 
 RUN apk add --no-cache git ca-certificates
 
