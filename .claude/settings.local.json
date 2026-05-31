@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(go mod *)",
+      "Bash(grep -v \".git$\")"
+    ]
+  }
+}
