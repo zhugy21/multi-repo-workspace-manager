@@ -4,7 +4,16 @@
       "Bash(git init *)",
       "Bash(git config *)",
       "Bash(go mod *)",
-      "Bash(grep -v \".git$\")"
+      "Bash(grep -v \".git$\")",
+      "Bash(go build *)",
+      "Bash(./ws)",
+      "Read(//root/go/pkg/mod/**)",
+      "Read(//usr/local/go/**)",
+      "Bash(go env *)",
+      "Bash(GIT_SSL_NO_VERIFY=1 git ls-remote https://github.com/stretchr/testify.git)",
+      "Bash(curl -sI https://github.com)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }

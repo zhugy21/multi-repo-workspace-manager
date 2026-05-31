@@ -10,17 +10,6 @@
 
 **Spec:** `docs/SPEC.md`
 
-## Environment Setup (ALL tasks MUST include this)
-
-```bash
-export PATH="/usr/local/go/bin:$PATH"
-export GOROOT="/usr/local/go"
-which go && go version  # verify: go1.26+
-cd /root/mycode/unirepo
-```
-
-All agent dispatches must include these env vars in their prompt.
-
 ---
 
 ## Dependency Graph
@@ -30,8 +19,7 @@ Phase A — Foundation (sequential)
 ─────────────────────────────────
   T1: go mod init + directory scaffold
    │
-  T2a: pkg/types/repo.go (Status, Repo, Task, Result, Summary, Filter, Summarize)
-  T2b: pkg/types/errors.go (6 error types — parallel with T2a)
+  T2: pkg/types (errors, Repo, Task, Result, Status, Summarize)
    │
   T3: internal/workspace (config parse, validate, filter)
    │
@@ -91,392 +79,35 @@ Phase E — Integration (depends on Phase C + Phase D)
 
 ---
 
-### Task 2a: Status enum + Repo + Task + Result + Summary + Filter structs
+### Task 2: Shared types — errors, Repo, Task, Result, Status, Summary
 
 **Depends on:** T1 (need `go.mod`)
-**Parallelizable with:** T2b (different file: errors.go vs repo.go)
-**Goal:** Create `pkg/types/repo.go` with ALL struct types and the Summarize function. No error types — those are T2b.
+**Parallelizable with:** nothing (types used by everything else)
+**Goal:** Implement all shared domain types and error types in `pkg/types/`.
 
 **Files:**
-- Create: `pkg/types/repo.go` (exact code below)
-- Create: `pkg/types/repo_test.go` (exact tests below)
-- Run: `go get github.com/stretchr/testify` before implementing
+- Create: `pkg/types/repo.go`
+- Create: `pkg/types/errors.go`
+- Create: `pkg/types/repo_test.go`
 
-**Exact code for repo.go:**
+**Implementation points:**
 
-```go
-package types
-
-import "time"
-
-// Status represents the execution status of a task.
-type Status string
-
-const (
-	StatusPending   Status = "pending"
-	StatusRunning   Status = "running"
-	StatusSuccess   Status = "success"
-	StatusFailed    Status = "failed"
-	StatusCancelled Status = "cancelled"
-	StatusSkipped   Status = "skipped"
-	StatusWarning   Status = "warning"
-)
-
-// Repo represents a single repository in the workspace config.
-type Repo struct {
-	Name              string        `yaml:"name" json:"name"`
-	Path              string        `yaml:"path" json:"path"`
-	URL               string        `yaml:"url,omitempty" json:"url,omitempty"`
-	Type              string        `yaml:"type,omitempty" json:"type,omitempty"`
-	Group             string        `yaml:"group,omitempty" json:"group,omitempty"`
-	DefaultBranch     string        `yaml:"default_branch,omitempty" json:"default_branch,omitempty"`
-	BuildCommand      string        `yaml:"build_command,omitempty" json:"build_command,omitempty"`
-	BuildTimeout      time.Duration `yaml:"build_timeout,omitempty" json:"build_timeout,omitempty"`
-	HealthCommand     string        `yaml:"health_command,omitempty" json:"health_command,omitempty"`
-	HealthTimeout     time.Duration `yaml:"health_timeout,omitempty" json:"health_timeout,omitempty"`
-	EnvFile           string        `yaml:"env_file,omitempty" json:"env_file,omitempty"`
-	DockerComposeFile string        `yaml:"docker_compose_file,omitempty" json:"docker_compose_file,omitempty"`
-	SyncCommand       string        `yaml:"sync_command,omitempty" json:"sync_command,omitempty"`
-	SmartBuild        bool          `yaml:"smart_build,omitempty" json:"smart_build,omitempty"`
-}
-
-// Task is the input to the executor engine.
-type Task struct {
-	ID       string
-	RepoName string
-	Group    string
-	Command  []string
-	Timeout  time.Duration // 0 means use global default
-	EnvFiles []string
-}
-
-// Result is the output from executing a single task.
-type Result struct {
-	TaskID   string        `json:"task_id"`
-	RepoName string        `json:"repo_name"`
-	Group    string        `json:"group,omitempty"`
-	Status   Status        `json:"status"`
-	Detail   string        `json:"detail"`
-	Error    error         `json:"-"`
-	ErrorStr string        `json:"error,omitempty"`
-	Duration time.Duration `json:"duration_ms"`
-	ExitCode int           `json:"exit_code"`
-}
-
-// Summary aggregates results from a batch execution.
-type Summary struct {
-	Total     int `json:"total"`
-	Success   int `json:"success"`
-	Failed    int `json:"failed"`
-	Cancelled int `json:"cancelled"`
-	Skipped   int `json:"skipped"`
-	Warning   int `json:"warning"`
-}
-
-// Filter selects which repos to operate on.
-type Filter struct {
-	All   bool
-	Group string
-	Repo  string
-}
-
-// HasFailures returns true if any task failed.
-func (s Summary) HasFailures() bool {
-	return s.Failed > 0
-}
-
-// Summarize counts results by status and returns a Summary.
-// pending and running results are not counted (they are in-progress).
-func Summarize(results []Result) Summary {
-	s := Summary{}
-	for _, r := range results {
-		s.Total++
-		switch r.Status {
-		case StatusSuccess:
-			s.Success++
-		case StatusFailed:
-			s.Failed++
-		case StatusCancelled:
-			s.Cancelled++
-		case StatusSkipped:
-			s.Skipped++
-		case StatusWarning:
-			s.Warning++
-		}
-	}
-	return s
-}
-```
-
-**Exact tests for repo_test.go:**
-
-```go
-package types
-
-import (
-	"encoding/json"
-	"testing"
-	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
-
-func TestStatusConstants(t *testing.T) {
-	assert.Equal(t, Status("pending"), StatusPending)
-	assert.Equal(t, Status("running"), StatusRunning)
-	assert.Equal(t, Status("success"), StatusSuccess)
-	assert.Equal(t, Status("failed"), StatusFailed)
-	assert.Equal(t, Status("cancelled"), StatusCancelled)
-	assert.Equal(t, Status("skipped"), StatusSkipped)
-	assert.Equal(t, Status("warning"), StatusWarning)
-}
-
-func TestRepoJSONRoundTrip(t *testing.T) {
-	r := Repo{
-		Name:          "auth-service",
-		Path:          "./auth-service",
-		URL:           "git@github.com:org/auth-service.git",
-		Type:          "go",
-		Group:         "backend",
-		DefaultBranch: "main",
-		BuildCommand:  "make build",
-		BuildTimeout:  5 * time.Minute,
-		HealthCommand: "curl -sf http://localhost:8080/health",
-		HealthTimeout: 30 * time.Second,
-		EnvFile:       ".env.auth",
-	}
-	data, err := json.Marshal(r)
-	require.NoError(t, err)
-	var r2 Repo
-	err = json.Unmarshal(data, &r2)
-	require.NoError(t, err)
-	assert.Equal(t, r.Name, r2.Name)
-	assert.Equal(t, r.Path, r2.Path)
-	assert.Equal(t, r.URL, r2.URL)
-	assert.Equal(t, "go", r2.Type)
-	assert.Equal(t, "backend", r2.Group)
-	assert.Equal(t, "main", r2.DefaultBranch)
-	assert.Equal(t, "make build", r2.BuildCommand)
-	// time.Duration marshals as nanoseconds in JSON
-	assert.Greater(t, r2.BuildTimeout, time.Duration(0))
-	assert.Greater(t, r2.HealthTimeout, time.Duration(0))
-}
-
-func TestResultJSONOmitEmpty(t *testing.T) {
-	r := Result{
-		TaskID:   "a/sync",
-		RepoName: "a",
-		Status:   StatusSuccess,
-		Detail:   "ok",
-	}
-	data, err := json.Marshal(r)
-	require.NoError(t, err)
-	// Group and error should be omitted when empty
-	assert.NotContains(t, string(data), `"group"`)
-	assert.NotContains(t, string(data), `"error"`)
-}
-
-func TestResultSummary(t *testing.T) {
-	results := []Result{
-		{RepoName: "a", Status: StatusSuccess},
-		{RepoName: "b", Status: StatusFailed},
-		{RepoName: "c", Status: StatusCancelled},
-		{RepoName: "d", Status: StatusSkipped},
-		{RepoName: "e", Status: StatusSuccess},
-	}
-	s := Summarize(results)
-	assert.Equal(t, 5, s.Total)
-	assert.Equal(t, 2, s.Success)
-	assert.Equal(t, 1, s.Failed)
-	assert.Equal(t, 1, s.Cancelled)
-	assert.Equal(t, 1, s.Skipped)
-	assert.Equal(t, 0, s.Warning)
-	assert.True(t, s.HasFailures())
-}
-
-func TestSummarizeNoFailures(t *testing.T) {
-	results := []Result{
-		{RepoName: "a", Status: StatusSuccess},
-		{RepoName: "b", Status: StatusWarning},
-	}
-	s := Summarize(results)
-	assert.False(t, s.HasFailures())
-}
-
-func TestFilterDefaults(t *testing.T) {
-	f := Filter{}
-	assert.False(t, f.All)
-	assert.Empty(t, f.Group)
-	assert.Empty(t, f.Repo)
-}
-```
+1. **Status** — `type Status string` with consts: `pending`, `running`, `success`, `failed`, `cancelled`, `skipped`, `warning`
+2. **Repo** — struct with YAML+JSON tags: `name`(required), `path`(required), `url`, `type`, `group`, `default_branch`, `build_command`, `build_timeout`, `health_command`, `health_timeout`, `env_file`, `docker_compose_file`, `sync_command`, `smart_build`
+3. **Task** — struct: `ID string`, `RepoName string`, `Group string`, `Command []string`, `Timeout time.Duration` (0 = use global), `EnvFiles []string`
+4. **Result** — struct: `TaskID`, `RepoName`, `Group`, `Status`, `Detail`, `Error` (unexported), `ErrorStr`, `Duration`, `ExitCode int`
+5. **Summary** — struct: `Total`, `Success`, `Failed`, `Cancelled`, `Skipped`, `Warning int` — plus method `HasFailures() bool`
+6. **Filter** — struct: `All bool`, `Group string`, `Repo string`
+7. **Summarize(results []Result) Summary** — iterate results, count by status
+8. **Errors** — 6 error types: `ConfigError`, `RepoError`, `CommandError`, `TimeoutError`, `CancelError`, `WorkspaceError`. Each with `Error()` using `fmt.Errorf` wrapping.
 
 **Verification:**
-- [ ] `go get github.com/stretchr/testify` → success
-- [ ] Write the exact code above to `pkg/types/repo.go` and `pkg/types/repo_test.go`
-- [ ] `go test ./pkg/types/... -v` → all 6 tests pass
+- [ ] Write test `TestRepoJSONRoundTrip` — marshal/unmarshal Repo with all fields
+- [ ] Write test `TestResultSummary` — 5 results with mixed statuses, verify counts
+- [ ] Write test `TestSummarizeHasFailures` — verify `HasFailures()` returns true when Failed>0
+- [ ] Write test `TestErrorTypes` — create each error type, verify `Error()` string contains key info
+- [ ] `go test ./pkg/types/... -v` → all 4 tests pass
 - [ ] `go build ./...` → clean compile
-- [ ] Commit: `git add -A && git commit -m "feat: add shared types (Status, Repo, Task, Result, Summary, Filter)"`
-
----
-
-### Task 2b: Error types
-
-**Depends on:** T2a (needs `pkg/types/repo.go` to exist)
-**Parallelizable with:** T2a (different file, no code dependency)
-**Goal:** Create `pkg/types/errors.go` with all 6 error types.
-
-**Files:**
-- Create: `pkg/types/errors.go` (exact code below)
-- Modify: `pkg/types/repo_test.go` (append error tests)
-
-**Exact code for errors.go:**
-
-```go
-package types
-
-import "fmt"
-
-// ConfigError is returned when workspace.yaml parsing or validation fails.
-type ConfigError struct {
-	File    string
-	Message string
-	Err     error
-}
-
-func (e *ConfigError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("config error in %s: %s: %v", e.File, e.Message, e.Err)
-	}
-	return fmt.Sprintf("config error in %s: %s", e.File, e.Message)
-}
-
-func (e *ConfigError) Unwrap() error { return e.Err }
-
-// RepoError is returned when a git operation on a repository fails.
-type RepoError struct {
-	Repo    string
-	Message string
-	Err     error
-}
-
-func (e *RepoError) Error() string {
-	return fmt.Sprintf("repo %s: %s: %v", e.Repo, e.Message, e.Err)
-}
-
-func (e *RepoError) Unwrap() error { return e.Err }
-
-// CommandError is returned when a build/health command exits non-zero.
-type CommandError struct {
-	Repo     string
-	Command  string
-	ExitCode int
-	Stderr   string
-}
-
-func (e *CommandError) Error() string {
-	return fmt.Sprintf("repo %s: command '%s' exited with code %d: %s",
-		e.Repo, e.Command, e.ExitCode, e.Stderr)
-}
-
-// TimeoutError is returned when a task exceeds its timeout.
-type TimeoutError struct {
-	Repo    string
-	Timeout string
-}
-
-func (e *TimeoutError) Error() string {
-	return fmt.Sprintf("repo %s: timed out after %s", e.Repo, e.Timeout)
-}
-
-// CancelError is returned when a task is cancelled due to fail-fast.
-type CancelError struct {
-	Repo   string
-	Reason string
-}
-
-func (e *CancelError) Error() string {
-	return fmt.Sprintf("repo %s: cancelled: %s", e.Repo, e.Reason)
-}
-
-// WorkspaceError is returned when workspace switching/lookup fails.
-type WorkspaceError struct {
-	Name    string
-	Message string
-	Err     error
-}
-
-func (e *WorkspaceError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("workspace %s: %s: %v", e.Name, e.Message, e.Err)
-	}
-	return fmt.Sprintf("workspace %s: %s", e.Name, e.Message)
-}
-
-func (e *WorkspaceError) Unwrap() error { return e.Err }
-```
-
-**Append to repo_test.go:**
-
-```go
-func TestConfigError(t *testing.T) {
-	err := &ConfigError{File: "workspace.yaml", Message: "missing name"}
-	assert.Contains(t, err.Error(), "workspace.yaml")
-	assert.Contains(t, err.Error(), "missing name")
-}
-
-func TestRepoError(t *testing.T) {
-	err := &RepoError{Repo: "auth", Message: "git pull failed", Err: fmt.Errorf("network")}
-	assert.Contains(t, err.Error(), "auth")
-	assert.Contains(t, err.Error(), "git pull failed")
-	assert.Contains(t, err.Error(), "network")
-}
-
-func TestCommandError(t *testing.T) {
-	err := &CommandError{Repo: "auth", Command: "make build", ExitCode: 1, Stderr: "compile error"}
-	assert.Contains(t, err.Error(), "auth")
-	assert.Contains(t, err.Error(), "make build")
-	assert.Contains(t, err.Error(), "exit code 1")
-	assert.Contains(t, err.Error(), "compile error")
-}
-
-func TestTimeoutError(t *testing.T) {
-	err := &TimeoutError{Repo: "auth", Timeout: "30s"}
-	assert.Contains(t, err.Error(), "auth")
-	assert.Contains(t, err.Error(), "timed out after 30s")
-}
-
-func TestCancelError(t *testing.T) {
-	err := &CancelError{Repo: "auth", Reason: "fail-fast triggered by payment-svc"}
-	assert.Contains(t, err.Error(), "auth")
-	assert.Contains(t, err.Error(), "cancelled")
-	assert.Contains(t, err.Error(), "payment-svc")
-}
-
-func TestWorkspaceError(t *testing.T) {
-	err := &WorkspaceError{Name: "myproject", Message: "not found"}
-	assert.Contains(t, err.Error(), "myproject")
-	assert.Contains(t, err.Error(), "not found")
-}
-
-func TestErrorUnwrap(t *testing.T) {
-	inner := fmt.Errorf("inner")
-	cfgErr := &ConfigError{File: "f", Message: "m", Err: inner}
-	assert.ErrorIs(t, cfgErr, inner)
-
-	wsErr := &WorkspaceError{Name: "w", Message: "m", Err: inner}
-	assert.ErrorIs(t, wsErr, inner)
-}
-```
-
-Note: tests need `import "fmt"` added to `repo_test.go` imports.
-
-**Verification:**
-- [ ] Write the exact code above
-- [ ] `go test ./pkg/types/... -v` → all 13 tests pass (6 from T2a + 7 from T2b)
-- [ ] `go build ./...` → clean compile
-- [ ] Commit: `git add -A && git commit -m "feat: add error types (ConfigError, RepoError, CommandError, TimeoutError, CancelError, WorkspaceError)"`
 
 ---
 
@@ -902,10 +533,10 @@ func TestXxx(t *testing.T) {
 For subagent-driven development with worktree isolation:
 
 **Wave 1** (1 agent): T1 → commit
-**Wave 2** (2 agents parallel): T2a (structs) ∥ T2b (errors) → sequential merge
+**Wave 2** (1 agent): T2 (types) → commit
 **Wave 3** (1 agent): T3 (workspace config) → commit
 **Wave 4** (3 agents parallel): T4 (executor) ∥ T5 (runner interface+sync) ∥ T6 (build+health) → each in own worktree, merge sequentially
 **Wave 5** (1 agent): T7 (root CLI + common) → commit
-**Wave 6** (6 agents parallel): T8 ∥ T9 ∥ T10 ∥ T11 ∥ T12 ∥ T13 (TUI) → each in own worktree
+**Wave 6** (5 agents parallel): T8 ∥ T9 ∥ T10 ∥ T11 ∥ T12 (all CLI commands) ∥ T13 (TUI) → each in own worktree
 **Wave 7** (1 agent): T14 (main.go wire-up) → commit
 **Wave 8** (1 agent): T15 (E2E tests) → commit
