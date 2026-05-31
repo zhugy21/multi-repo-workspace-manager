@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -103,4 +104,53 @@ func TestFilterDefaults(t *testing.T) {
 	assert.False(t, f.All)
 	assert.Empty(t, f.Group)
 	assert.Empty(t, f.Repo)
+}
+
+func TestConfigError(t *testing.T) {
+	err := &ConfigError{File: "workspace.yaml", Message: "missing name"}
+	assert.Contains(t, err.Error(), "workspace.yaml")
+	assert.Contains(t, err.Error(), "missing name")
+}
+
+func TestRepoError(t *testing.T) {
+	err := &RepoError{Repo: "auth", Message: "git pull failed", Err: fmt.Errorf("network")}
+	assert.Contains(t, err.Error(), "auth")
+	assert.Contains(t, err.Error(), "git pull failed")
+	assert.Contains(t, err.Error(), "network")
+}
+
+func TestCommandError(t *testing.T) {
+	err := &CommandError{Repo: "auth", Command: "make build", ExitCode: 1, Stderr: "compile error"}
+	assert.Contains(t, err.Error(), "auth")
+	assert.Contains(t, err.Error(), "make build")
+	assert.Contains(t, err.Error(), "exit code 1")
+	assert.Contains(t, err.Error(), "compile error")
+}
+
+func TestTimeoutError(t *testing.T) {
+	err := &TimeoutError{Repo: "auth", Timeout: "30s"}
+	assert.Contains(t, err.Error(), "auth")
+	assert.Contains(t, err.Error(), "timed out after 30s")
+}
+
+func TestCancelError(t *testing.T) {
+	err := &CancelError{Repo: "auth", Reason: "fail-fast triggered by payment-svc"}
+	assert.Contains(t, err.Error(), "auth")
+	assert.Contains(t, err.Error(), "cancelled")
+	assert.Contains(t, err.Error(), "payment-svc")
+}
+
+func TestWorkspaceError(t *testing.T) {
+	err := &WorkspaceError{Name: "myproject", Message: "not found"}
+	assert.Contains(t, err.Error(), "myproject")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestErrorUnwrap(t *testing.T) {
+	inner := fmt.Errorf("inner")
+	cfgErr := &ConfigError{File: "f", Message: "m", Err: inner}
+	assert.ErrorIs(t, cfgErr, inner)
+
+	wsErr := &WorkspaceError{Name: "w", Message: "m", Err: inner}
+	assert.ErrorIs(t, wsErr, inner)
 }

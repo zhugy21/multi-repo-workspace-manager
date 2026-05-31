@@ -2,7 +2,7 @@ package types
 
 import "fmt"
 
-// ConfigError represents a configuration-related error.
+// ConfigError is returned when workspace.yaml parsing or validation fails.
 type ConfigError struct {
 	File    string
 	Message string
@@ -10,10 +10,15 @@ type ConfigError struct {
 }
 
 func (e *ConfigError) Error() string {
-	return fmt.Sprintf("config error in %s: %s: %s", e.File, e.Message, e.Err)
+	if e.Err != nil {
+		return fmt.Sprintf("config error in %s: %s: %v", e.File, e.Message, e.Err)
+	}
+	return fmt.Sprintf("config error in %s: %s", e.File, e.Message)
 }
 
-// RepoError represents a repository-related error.
+func (e *ConfigError) Unwrap() error { return e.Err }
+
+// RepoError is returned when a git operation on a repository fails.
 type RepoError struct {
 	Repo    string
 	Message string
@@ -21,22 +26,25 @@ type RepoError struct {
 }
 
 func (e *RepoError) Error() string {
-	return fmt.Sprintf("repo %s: %s: %s", e.Repo, e.Message, e.Err)
+	return fmt.Sprintf("repo %s: %s: %v", e.Repo, e.Message, e.Err)
 }
 
-// CommandError represents a command execution error.
+func (e *RepoError) Unwrap() error { return e.Err }
+
+// CommandError is returned when a build/health command exits non-zero.
 type CommandError struct {
-	Repo      string
-	Command   string
-	ExitCode  int
-	Stderr    string
+	Repo     string
+	Command  string
+	ExitCode int
+	Stderr   string
 }
 
 func (e *CommandError) Error() string {
-	return fmt.Sprintf("repo %s: command '%s' exited with code %d: %s", e.Repo, e.Command, e.ExitCode, e.Stderr)
+	return fmt.Sprintf("repo %s: command '%s' exit code %d: %s",
+		e.Repo, e.Command, e.ExitCode, e.Stderr)
 }
 
-// TimeoutError represents a timeout error.
+// TimeoutError is returned when a task exceeds its timeout.
 type TimeoutError struct {
 	Repo    string
 	Timeout string
@@ -46,7 +54,7 @@ func (e *TimeoutError) Error() string {
 	return fmt.Sprintf("repo %s: timed out after %s", e.Repo, e.Timeout)
 }
 
-// CancelError represents a cancellation error.
+// CancelError is returned when a task is cancelled due to fail-fast.
 type CancelError struct {
 	Repo   string
 	Reason string
@@ -56,7 +64,7 @@ func (e *CancelError) Error() string {
 	return fmt.Sprintf("repo %s: cancelled: %s", e.Repo, e.Reason)
 }
 
-// WorkspaceError represents a workspace-related error.
+// WorkspaceError is returned when workspace switching/lookup fails.
 type WorkspaceError struct {
 	Name    string
 	Message string
@@ -64,5 +72,10 @@ type WorkspaceError struct {
 }
 
 func (e *WorkspaceError) Error() string {
-	return fmt.Sprintf("workspace %s: %s: %s", e.Name, e.Message, e.Err)
+	if e.Err != nil {
+		return fmt.Sprintf("workspace %s: %s: %v", e.Name, e.Message, e.Err)
+	}
+	return fmt.Sprintf("workspace %s: %s", e.Name, e.Message)
 }
+
+func (e *WorkspaceError) Unwrap() error { return e.Err }
