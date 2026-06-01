@@ -166,8 +166,8 @@ go test ./test/e2e/... -v            # 11 tests — end-to-end
 
 - [x] SPEC.md, PLAN.md, SPEC_PROCESS.md
 - [x] Complete source code (40 files, ~3300 lines Go)
-- [ ] Dockerfile + docker-compose.yml (V2)
-- [ ] README.md
-- [ ] AGENT_LOG.md
-- [ ] CI config (.github/workflows/)
-- [ ] REFLECTION.md
+- [x] Dockerfile + docker-compose.yml (V2)
+- [x] README.md
+- [x] AGENT_LOG.md
+- [x] CI config (.github/workflows/)
+- [x] REFLECTION.md
